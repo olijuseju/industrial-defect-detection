@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. The repo is currently a scaffold: the subpackages under `src/defect_detection/` are empty `__init__.py` files, and `configs/`, `scripts/`, `notebooks/` and `.github/workflows/` are empty directories. The only test is an import smoke test.
+Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Only the dataset download step is implemented (`src/defect_detection/data/download.py`, CLI in `scripts/download_data.py`). The `training`, `inference` and `api` subpackages are empty `__init__.py` files, and `notebooks/` and `.github/workflows/` are empty directories. See the roadmap at the end for the current phase.
 
 ## Commands
 
@@ -20,6 +20,9 @@ uv run pytest tests/test_smoke.py::test_package_is_importable   # single test
 uv run ruff check .          # lint (rules: E, F, I, B, UP; line length 100)
 uv run ruff check . --fix
 uv run ruff format .
+
+# MVTec AD into data/raw (idempotent). Source: --archive, --url or the MVTEC_AD_URL env var
+uv run python scripts/download_data.py --archive /path/to/mvtec_anomaly_detection.tar.xz
 ```
 
 ## Layout and intent
@@ -59,8 +62,8 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
 ## Roadmap y decisiones tomadas
 Fases (no avanzar sin mi confirmación):
 1. Setup ✅ (uv, src layout, WSL2, torch CPU local)
-2. Descarga dataset MVTec AD ← SIGUIENTE
-3. Preparación de datos: máscaras → etiquetas YOLO + splits
+2. Descarga dataset MVTec AD ✅ (15 categorías en data/raw, SHA256 en configs/dataset_checksums.json)
+3. Preparación de datos: máscaras → etiquetas YOLO + splits ← SIGUIENTE
 4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP)
 5. Inferencia + API FastAPI (imagen → JSON + imagen anotada)
 6. Docker + tests + logging estructurado + CI (GitHub Actions)
