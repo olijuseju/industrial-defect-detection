@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Datos y modelos (licencia + tamaño; se versionarán con DVC)
+data/**
+!data/**/
+!data/**/.gitkeep
+models/**
+!models/.gitkeep
+*.pt
+*.onnx
+
+# Salidas de ultralytics y tracking
+runs/
+mlruns/
+
+# Entorno
+.env
+.ipynb_checkpoints/
