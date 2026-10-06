@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Only the dataset download step is implemented (`src/defect_detection/data/download.py`, CLI in `scripts/download_data.py`). The `training`, `inference` and `api` subpackages are empty `__init__.py` files, and `notebooks/` and `.github/workflows/` are empty directories. See the roadmap at the end for the current phase.
+Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Only the dataset download step is implemented (`src/defect_detection/data/download.py`, CLI in `scripts/download_data.py`). The `training`, `inference` and `api` subpackages are empty `__init__.py` files, and `notebooks/` and `.github/workflows/` are empty directories. See the roadmap at the end for the current step.
 
 ## Commands
 
@@ -60,7 +60,7 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
 - Dataset: MVTec AD (licencia CC BY-NC-SA 4.0). Nunca se commitea; vive en data/ (gitignored).
 
 ## Roadmap y decisiones tomadas
-Fases (no avanzar sin mi confirmación):
+Pasos (no avanzar sin mi confirmación):
 1. Setup ✅ (uv, src layout, WSL2, torch CPU local)
 2. Descarga dataset MVTec AD ✅ (15 categorías en data/raw, SHA256 en configs/dataset_checksums.json)
 3. Preparación de datos: máscaras → etiquetas YOLO + splits ← SIGUIENTE
