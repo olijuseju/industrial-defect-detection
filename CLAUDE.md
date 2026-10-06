@@ -55,3 +55,35 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
   el entrenamiento se hace en Google Colab (GPU) con `pip install -e .`, que
   ignora tool.uv.sources y usa el torch+CUDA de Colab.
 - Dataset: MVTec AD (licencia CC BY-NC-SA 4.0). Nunca se commitea; vive en data/ (gitignored).
+
+## Roadmap y decisiones tomadas
+Fases (no avanzar sin mi confirmación):
+1. Setup ✅ (uv, src layout, WSL2, torch CPU local)
+2. Descarga dataset MVTec AD ← SIGUIENTE
+3. Preparación de datos: máscaras → etiquetas YOLO + splits
+4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP)
+5. Inferencia + API FastAPI (imagen → JSON + imagen anotada)
+6. Docker + tests + logging estructurado + CI (GitHub Actions)
+7. Versionado (DVC/MLflow) + README con resultados reales
+8. (Fase 2 del portfolio, otro momento) anomaly detection con anomalib
+
+Hechos del dataset que condicionan el diseño:
+- MVTec AD es de anomaly detection: el train solo tiene piezas buenas; los defectos
+  están solo en test, con máscaras de segmentación a nivel de píxel, sin bboxes.
+- Por tanto hay que convertir máscaras → etiquetas YOLO (bboxes por componentes conexas)
+  y re-particionar las imágenes defectuosas en train/val/test propios.
+- Pocas imágenes defectuosas por categoría: documentarlo como limitación en el README.
+- Categoría baseline: hazelnut (defectos localizados: crack, cut, hole, print).
+  Evitar defectos globales sin localización (p. ej. metal_nut/flip).
+- Detección (bbox) primero; segmentación (YOLO-seg) se valora después.
+
+Diseño acordado del paso 2 (descarga):
+- Lógica en src/defect_detection/data/download.py; scripts/download_data.py solo es CLI.
+- Dos vías: --url (descarga en streaming) o --archive (fichero ya bajado a mano).
+- La URL de MVTec no se hardcodea ni se commitea (va por argumento o variable de entorno).
+- SHA256: se calcula en la primera descarga y se guarda en configs/; después se verifica.
+  No inventar checksums oficiales.
+- Extracción segura con tarfile filter="data" (evita path traversal).
+- Idempotente: si la categoría ya está extraída, no hace nada.
+- Solo librería estándar + logging.
+- Tests sin red, con un .tar diminuto generado en el propio test.
