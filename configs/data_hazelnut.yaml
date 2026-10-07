@@ -1,0 +1,15 @@
+# Preparación de datos para el baseline (paso 3).
+category: hazelnut
+
+# Máscara -> cajas. Valores elegidos mirando las hojas de scripts/preview_labels.py:
+# 31 px une las letras de un mismo sello en `print`; 300 px descarta dos restos sueltos
+# (189 y 192 px) sin tocar el defecto real más pequeño (405 px).
+merge_gap_px: 31
+min_area_px: 300
+
+# Split: test fijo estratificado + k folds. Las buenas entran como negativos en
+# proporción negative_ratio respecto a las defectuosas.
+test_fraction: 0.2
+folds: 4
+seed: 42
+negative_ratio: 1.0

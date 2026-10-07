@@ -24,3 +24,17 @@ def iter_defect_samples(category_dir: Path) -> Iterator[tuple[str, Path, Path]]:
             if not mask.is_file():
                 raise FileNotFoundError(f"Missing mask for {image}: {mask}")
             yield defect, image, mask
+
+
+def good_images(category_dir: Path) -> list[Path]:
+    """Imágenes sin defecto de la categoría (``train/good`` y ``test/good``)."""
+    return sorted(
+        image
+        for split in ("train", "test")
+        for image in (category_dir / split / GOOD).glob("*.png")
+    )
+
+
+def class_of(image: Path) -> str:
+    """Clase de una imagen: el nombre de su carpeta (un tipo de defecto o ``good``)."""
+    return image.parent.name
