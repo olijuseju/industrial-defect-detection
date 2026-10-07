@@ -16,11 +16,17 @@ def defect_classes(category_dir: Path) -> list[str]:
     return sorted(p.name for p in (category_dir / "ground_truth").iterdir() if p.is_dir())
 
 
+def mask_path(image: Path) -> Path:
+    """Ruta de la máscara de una imagen defectuosa ``<categoría>/test/<defecto>/<n>.png``."""
+    category_dir = image.parents[2]
+    return category_dir / "ground_truth" / image.parent.name / f"{image.stem}_mask.png"
+
+
 def iter_defect_samples(category_dir: Path) -> Iterator[tuple[str, Path, Path]]:
     """Recorre las imágenes defectuosas como ``(defecto, imagen, máscara)``."""
     for defect in defect_classes(category_dir):
         for image in sorted((category_dir / "test" / defect).glob("*.png")):
-            mask = category_dir / "ground_truth" / defect / f"{image.stem}_mask.png"
+            mask = mask_path(image)
             if not mask.is_file():
                 raise FileNotFoundError(f"Missing mask for {image}: {mask}")
             yield defect, image, mask
