@@ -1,0 +1,24 @@
+# Experimento sobre el baseline: mismo entrenamiento con el learning rate 4 veces más bajo.
+# Motivo: el baseline se hunde en las épocas 6-16 (métricas a cero) y tarda unas 100 épocas
+# en recuperar lo que traían los pesos preentrenados.
+name: lr5e-4
+dataset: data/processed/hazelnut
+fold: 0
+
+model: models/yolo11n.pt
+imgsz: 640
+single_cls: true
+
+epochs: 300
+patience: 100
+batch: 16
+seed: 42
+
+# En el baseline, `optimizer: auto` de Ultralytics elige AdamW con lr0=0.002, momentum=0.9 y
+# warmup_bias_lr=0. Al fijar el optimizador a mano esos dos últimos vuelven a sus valores por
+# defecto (0.937 y 0.1), así que se declaran aquí para que lo único que cambie sea lr0.
+hyperparameters:
+  optimizer: AdamW
+  lr0: 0.0005
+  momentum: 0.9
+  warmup_bias_lr: 0.0

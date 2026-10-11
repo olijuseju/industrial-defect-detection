@@ -1,7 +1,8 @@
 """Parámetros de un entrenamiento, leídos de ``configs/train_<nombre>.yaml``."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -18,6 +19,9 @@ class TrainConfig:
     patience: int
     batch: int
     seed: int
+    # Argumentos de ``YOLO.train`` que solo fija algún experimento (optimizador, lr0...).
+    # Lo que no aparece aquí se queda con el valor por defecto de Ultralytics.
+    hyperparameters: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_yaml(cls, path: Path) -> "TrainConfig":

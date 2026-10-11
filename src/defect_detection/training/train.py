@@ -29,6 +29,7 @@ def train_arguments(config: TrainConfig, runs_dir: Path) -> dict:
         "batch": config.batch,
         "seed": config.seed,
         "deterministic": True,
+        **config.hyperparameters,
     }
 
 
