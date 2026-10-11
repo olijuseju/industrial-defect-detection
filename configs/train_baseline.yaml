@@ -1,4 +1,5 @@
-# Baseline (paso 4): una sola clase `defect`, validando con el fold 0.
+# Baseline (paso 4): una sola clase, validando con el fold 0. Es el punto de referencia;
+# el modelo elegido es configs/train_lr5e-4.yaml.
 name: baseline
 dataset: data/processed/hazelnut
 fold: 0
@@ -8,7 +9,8 @@ fold: 0
 model: models/yolo11n.pt
 # Las imágenes son 1024x1024; 640 es el baseline y 1024 queda como experimento.
 imgsz: 640
-# Las etiquetas llevan 4 clases; single_cls las entrena como una sola.
+# Las etiquetas llevan 4 clases; single_cls las entrena como una sola, que Ultralytics
+# nombra `item` en el checkpoint.
 single_cls: true
 
 epochs: 300

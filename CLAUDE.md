@@ -128,6 +128,7 @@ Diseño acordado del paso 3 (preparación de datos):
 - Una imagen defectuosa que se quede sin cajas es un error, no un negativo.
 - Clases: las etiquetas llevan siempre las 4 clases. El baseline de una sola clase `defect`
   se entrena con single_cls=True de Ultralytics; 4 clases queda como experimento comparado.
+  Validado en el paso 4: funciona, pero el checkpoint nombra la clase `item`, no `defect`.
 
 Diseño acordado del paso 4 (entrenamiento y evaluación):
 - Entrenamiento desde config (`configs/train_<nombre>.yaml`) con `scripts/train.py`; el
