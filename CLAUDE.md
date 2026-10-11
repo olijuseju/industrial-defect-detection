@@ -37,6 +37,8 @@ uv run python scripts/train.py --config configs/train_lr5e-4.yaml --epochs 1 --d
 
 # Evaluation on validation; writes reports/metrics_<name>.json. --test also evaluates the test split
 uv run python scripts/evaluate.py --weights models/lr5e-4.pt --config configs/train_lr5e-4.yaml
+# False alarms on the good images left out of the split; writes reports/false_alarms_<name>.json
+uv run python scripts/false_alarms.py --weights models/lr5e-4.pt --config configs/train_lr5e-4.yaml
 ```
 
 ## Layout and intent
@@ -148,6 +150,10 @@ Diseño acordado del paso 4 (entrenamiento y evaluación):
   dejaba pasar 4 de 14 piezas defectuosas en validación.
 - Test (una sola evaluación, lr5e-4, 28 imágenes): P 0.846, R 0.857, mAP50 0.803,
   mAP50-95 0.571; 14 de 14 defectuosas detectadas y 1 falsa alarma en 14 buenas.
+- Falsas alarmas sobre las 361 buenas de hazelnut que no entraron en el split (modelo y
+  umbral ya fijados): 5 de 361, 1,4 % (IC 95 % de Wilson: 0,6 %–3,2 %). Sustituye como
+  estimación a la de test (1 de 14). Para las defectuosas no hay equivalente: las 70 están
+  todas en el split.
 - Se dejó de ajustar aquí a propósito: con 15 defectos en validación, más experimentos
   ajustarían al ruido. Pendientes como experimentos: 4 clases, imgsz 1024, k-fold completo.
 - Pendiente para el paso 5: el nombre de clase `item` (traducir a `defect` en la capa de

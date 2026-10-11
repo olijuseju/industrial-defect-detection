@@ -11,6 +11,8 @@ from defect_detection.evaluation.evaluate import (
     count_boxes,
     image_level_metrics,
     partition_images,
+    unused_good_images,
+    wilson_interval,
 )
 
 # Confianza máxima que el modelo falso "detecta" en cada imagen.
@@ -142,3 +144,37 @@ def test_test_split_uses_the_same_threshold_and_has_no_sweep(
     assert [call["split"] for call in fake_yolo.val_calls] == ["val", "test"]
     assert report["test"]["image_level"] == report["val"]["image_level"]
     assert "image_level_by_confidence" not in report["test"]
+
+
+def test_unused_good_images_excludes_everything_in_the_split(tmp_path: Path):
+    for folder, names in (("train/good", ("000", "001")), ("test/good", ("000",))):
+        (tmp_path / folder).mkdir(parents=True)
+        for name in names:
+            (tmp_path / folder / f"{name}.png").touch()
+    (tmp_path / "test/crack").mkdir()
+    (tmp_path / "test/crack/000.png").touch()
+    split = {"partitions": {"test": ["test/good/000.png"], "fold0": ["train/good/001.png"]}}
+
+    assert unused_good_images(tmp_path, split) == [tmp_path / "train/good/000.png"]
+
+
+def test_wilson_interval_is_wide_with_few_images_and_narrow_with_many():
+    few_low, few_high = wilson_interval(1, 14)
+    many_low, many_high = wilson_interval(10, 140)
+
+    assert few_low < 1 / 14 < few_high
+    assert few_high - few_low > 2 * (many_high - many_low)
+    assert wilson_interval(0, 100)[0] == 0.0
+    assert wilson_interval(0, 0) == (0.0, 1.0)
+
+
+def test_false_alarms_on_good_lists_the_flagged_images(tmp_path: Path, fake_yolo: type[FakeYOLO]):
+    weights = tmp_path / "model.pt"
+    weights.write_bytes(b"weights")
+    images = [tmp_path / "hazelnut/train/good" / f"{name}.png" for name in ("good_ok", "good_fa")]
+
+    report = evaluation.false_alarms_on_good(weights, images, confidence=0.5)
+
+    assert report["good_images"] == 2 and report["false_alarms"] == 1
+    assert report["false_alarm_rate"] == 0.5
+    assert [item["image"] for item in report["flagged"]] == ["train/good/good_fa.png"]

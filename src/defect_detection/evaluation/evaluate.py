@@ -12,6 +12,7 @@ sin cambios, para no ajustar nada con los datos de test.
 """
 
 import logging
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import yaml
 from ultralytics import YOLO
 
 from defect_detection.data.download import sha256_file
+from defect_detection.data.mvtec import good_images
 from defect_detection.data.split import TEST
 
 logger = logging.getLogger(__name__)
@@ -89,8 +91,14 @@ def top_confidences(model: YOLO, images: list[Path], device: str | None = None) 
     Con ella se evalúa cualquier umbral sin volver a predecir: una imagen queda marcada
     con umbral ``t`` si y solo si su confianza máxima es >= ``t``.
     """
+    # stream=True: los resultados guardan la imagen original y no caben todos en memoria
+    # cuando son cientos de imágenes de 1024x1024.
     results = model.predict(
-        [str(image) for image in images], conf=SWEEP_THRESHOLDS[0], device=device, verbose=False
+        [str(image) for image in images],
+        conf=SWEEP_THRESHOLDS[0],
+        device=device,
+        verbose=False,
+        stream=True,
     )
     return [float(result.boxes.conf.max()) if len(result.boxes) else 0.0 for result in results]
 
@@ -171,3 +179,58 @@ def evaluate(
             model, data_yaml, TEST, single_cls, runs_dir, confidence, device=device
         )
     return report
+
+
+def unused_good_images(category_dir: Path, split: dict) -> list[Path]:
+    """Imágenes buenas de la categoría que no están en ninguna partición del split.
+
+    El split solo muestrea una parte de las buenas, así que el resto no ha intervenido ni
+    en el entrenamiento ni en la elección de época, hiperparámetros o umbral.
+    """
+    used = {image for images in split["partitions"].values() for image in images}
+    return [
+        image
+        for image in good_images(category_dir)
+        if image.relative_to(category_dir).as_posix() not in used
+    ]
+
+
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """Intervalo de confianza de Wilson (95 % por defecto) para una proporción.
+
+    Se usa en vez del intervalo normal porque este falla con proporciones cercanas a 0,
+    que es justo el caso de las falsas alarmas.
+    """
+    if total == 0:
+        return 0.0, 1.0
+    rate = successes / total
+    denominator = 1 + z**2 / total
+    centre = (rate + z**2 / (2 * total)) / denominator
+    margin = z * math.sqrt(rate * (1 - rate) / total + z**2 / (4 * total**2)) / denominator
+    return max(0.0, centre - margin), min(1.0, centre + margin)
+
+
+def false_alarms_on_good(
+    weights: Path, images: list[Path], confidence: float, device: str | None = None
+) -> dict:
+    """Falsas alarmas del modelo sobre imágenes que se saben buenas."""
+    model = YOLO(str(weights))
+    tops = top_confidences(model, images, device)
+    flagged = sorted(
+        ((top, image) for top, image in zip(tops, images, strict=True) if top >= confidence),
+        reverse=True,
+    )
+    low, high = wilson_interval(len(flagged), len(images))
+    logger.info("False alarms: %d of %d good images", len(flagged), len(images))
+    return {
+        "weights": {"file": weights.name, "sha256": sha256_file(weights)},
+        "confidence": confidence,
+        "good_images": len(images),
+        "false_alarms": len(flagged),
+        "false_alarm_rate": len(flagged) / len(images) if images else 0.0,
+        "false_alarm_rate_ci95": [low, high],
+        "flagged": [
+            {"image": f"{image.parent.parent.name}/{image.parent.name}/{image.name}", "top": top}
+            for top, image in flagged
+        ],
+    }

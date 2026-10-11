@@ -1,0 +1,36 @@
+{
+  "weights": {
+    "file": "lr5e-4.pt",
+    "sha256": "375a85e74017fae86ebbbc470e4370a2fa8f34372eed4b3fc5954ddda33791c1"
+  },
+  "confidence": 0.25,
+  "good_images": 361,
+  "false_alarms": 5,
+  "false_alarm_rate": 0.013850415512465374,
+  "false_alarm_rate_ci95": [
+    0.00593010593703633,
+    0.03200855018112563
+  ],
+  "flagged": [
+    {
+      "image": "train/good/310.png",
+      "top": 0.5101475715637207
+    },
+    {
+      "image": "train/good/091.png",
+      "top": 0.3819267451763153
+    },
+    {
+      "image": "train/good/066.png",
+      "top": 0.2940175533294678
+    },
+    {
+      "image": "train/good/244.png",
+      "top": 0.2680447995662689
+    },
+    {
+      "image": "train/good/278.png",
+      "top": 0.2599658668041229
+    }
+  ]
+}
