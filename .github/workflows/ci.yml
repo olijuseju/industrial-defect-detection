@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo a la misma rama cancela la ejecución anterior, que ya no interesa.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # Solo el grupo dev: ruff no necesita torch ni el resto de dependencias.
+      - name: Ruff check
+        run: uv run --only-dev --locked ruff check .
+      - name: Ruff format
+        run: uv run --only-dev --locked ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 es la versión de desarrollo; 3.13 es la que usa Colab para entrenar.
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      # --locked falla si uv.lock no está al día con pyproject.toml.
+      # El extra api hace falta para los tests del servicio.
+      - name: Install dependencies
+        run: uv sync --locked --extra api
+      - name: Run tests
+        run: uv run pytest
