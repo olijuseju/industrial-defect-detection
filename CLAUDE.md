@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and preparation (`data/`), config-driven training (`training/`) and evaluation (`evaluation/`), each with a thin CLI in `scripts/`. The `inference` and `api` subpackages are empty `__init__.py` files and `.github/workflows/` is an empty directory. See the roadmap at the end for the current step.
+Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and preparation (`data/`), config-driven training (`training/`), evaluation (`evaluation/`), inference (`inference/`) and the FastAPI service (`api/`), each with a thin CLI in `scripts/` except the API, which is started with uvicorn. `.github/workflows/` is an empty directory. See the roadmap at the end for the current step.
 
 ## Commands
 
@@ -39,6 +39,12 @@ uv run python scripts/train.py --config configs/train_lr5e-4.yaml --epochs 1 --d
 uv run python scripts/evaluate.py --weights models/lr5e-4.pt --config configs/train_lr5e-4.yaml
 # False alarms on the good images left out of the split; writes reports/false_alarms_<name>.json
 uv run python scripts/false_alarms.py --weights models/lr5e-4.pt --config configs/train_lr5e-4.yaml
+
+# One image: JSON on stdout, optional annotated image
+uv run python scripts/predict.py data/raw/hazelnut/test/crack/000.png --out /tmp/crack.png
+
+# API (needs the `api` extra). Settings via MODEL_PATH, CONFIDENCE, MAX_UPLOAD_MB; docs at /docs
+uv run uvicorn defect_detection.api.app:create_app --factory
 ```
 
 ## Layout and intent
@@ -48,8 +54,8 @@ uv run python scripts/false_alarms.py --weights models/lr5e-4.pt --config config
 - `data/`: dataset download and preparation. `prepare.py` is the entry point and composes the rest: `mvtec.py` (on-disk layout of a category), `masks.py` (mask → boxes), `split.py` (test + k folds), `config.py` (`DataConfig` read from `configs/data_<category>.yaml`)
 - `training/`: YOLO training. `TrainConfig` is read from `configs/train_<name>.yaml`; its optional `hyperparameters` mapping is passed straight to `YOLO.train`
 - `evaluation/`: box-level metrics (from Ultralytics) and image-level metrics (false alarms on good parts, defective parts flagged)
-- `inference/`: prediction
-- `api/`: FastAPI service; its dependencies live in the optional `api` extra, so code outside `api/` must not import FastAPI or uvicorn
+- `inference/`: `Predictor` loads the weights once and returns plain dataclasses (`Prediction`, `Detection`), never Ultralytics objects; `annotate` draws the boxes. Knows nothing about HTTP
+- `api/`: FastAPI service (`app.py` with the `create_app` factory, `settings.py` from environment variables, `schemas.py` for responses). It only validates the upload and calls the `Predictor`. Its dependencies live in the optional `api` extra, so code outside `api/` must not import FastAPI or uvicorn
 
 Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (entry points), `notebooks/` (Colab notebook that only orchestrates the scripts), `reports/` (committed metrics JSON), `data/raw` and `data/processed`, `models/`.
 
@@ -62,6 +68,8 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
 - **Colab sets the version floor.** The notebook runs `pip install -e .` on Colab's Python (3.13 when step 4 was done) and must keep Colab's CUDA build of torch, so `requires-python` and the lower bounds of `torch`/`torchvision` in `pyproject.toml` have to stay compatible with what Colab ships. Local versions are pinned by `uv.lock`.
 - **`single_cls=True` renames the class to `item`.** Labels always carry the 4 defect classes; the trained checkpoints have a single class named `item`, not `defect`. Evaluation must also pass `single_cls=True`.
 - **The test split is evaluated once.** `scripts/evaluate.py` only touches it with `--test`. It was used for `lr5e-4` (`reports/metrics_lr5e-4.json`); do not re-run it to compare experiments, use validation.
+- **`uv add` / `uv remove` drop the `api` extra from the venv.** Run `uv sync --extra api` again afterwards, or `tests/test_api.py` is skipped (it uses `pytest.importorskip`) and uvicorn is missing.
+- **The test client needs `httpx2`, not `httpx`.** The installed Starlette deprecates `httpx` for `TestClient`; `httpx2` is in the dev group.
 - **Processed dataset layout.** `data/processed/<category>/` has flat `images/` and `labels/` plus `test.txt`, `foldN_train.txt`, `foldN_val.txt` and `foldN.yaml` in its root. The lists use `./images/...` paths and the YAMLs set no `path`, so Ultralytics resolves everything relative to the files themselves and the directory can be moved as is. Do not move the lists into subfolders: Ultralytics resolves `./` against the folder of the `.txt`.
 
 ## Cómo trabajar conmigo
@@ -87,8 +95,8 @@ Pasos (no avanzar sin mi confirmación):
 2. Descarga dataset MVTec AD ✅ (15 categorías en data/raw, SHA256 en configs/dataset_checksums.json)
 3. Preparación de datos: máscaras → etiquetas YOLO + splits ✅ (hazelnut: 140 imágenes, 77 cajas, test + 4 folds)
 4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP) ✅ (modelo `lr5e-4`; métricas en reports/)
-5. Inferencia + API FastAPI (imagen → JSON + imagen anotada) ← SIGUIENTE
-6. Docker + tests + logging estructurado + CI (GitHub Actions)
+5. Inferencia + API FastAPI (imagen → JSON + imagen anotada) ✅ (/health, /predict, /predict/annotated)
+6. Docker + tests + logging estructurado + CI (GitHub Actions) ← SIGUIENTE
 7. Versionado (DVC/MLflow) + README con resultados reales
 8. (Fase 2 del portfolio, otro momento) anomaly detection con anomalib
 
@@ -157,5 +165,25 @@ Diseño acordado del paso 4 (entrenamiento y evaluación):
   todas en el split.
 - Se dejó de ajustar aquí a propósito: con 15 defectos en validación, más experimentos
   ajustarían al ruido. Pendientes como experimentos: 4 clases, imgsz 1024, k-fold completo.
-- Pendiente para el paso 5: el nombre de clase `item` (traducir a `defect` en la capa de
-  inferencia o reetiquetar) y reutilizar `confidence` como umbral de la API.
+
+Diseño acordado del paso 5 (inferencia y API):
+- Capa de inferencia separada de la API: `Predictor` devuelve dataclasses propias. La API
+  solo traduce entre HTTP y esa capa.
+- La clase `item` del checkpoint se expone como `defect` mediante la tabla `LABELS` de
+  `inference/predictor.py`; otras clases conservan su nombre. Descartado reentrenar.
+- Umbral fijado en el servidor (0.25, `CONFIDENCE`); el cliente no puede cambiarlo, para que
+  las métricas del paso 4 sigan describiendo al servicio.
+- Dos endpoints de predicción: `/predict` (JSON) y `/predict/annotated` (PNG, con el
+  veredicto en las cabeceras `X-Defective` y `X-Detections`). Descartado base64 en el JSON.
+- Configuración por variables de entorno (`MODEL_PATH`, `CONFIDENCE`, `MAX_UPLOAD_MB`), no
+  por los YAML de entrenamiento.
+- El modelo se carga y se calienta al arrancar; si faltan los pesos el servicio no arranca.
+- Endpoints síncronos (`def`): la inferencia ocupa CPU y FastAPI los ejecuta en un pool de
+  hilos. `Predictor` serializa las predicciones con un cerrojo porque un modelo de
+  Ultralytics no admite llamadas simultáneas. Para más capacidad se escalan procesos.
+- Validación de la subida: content-type declarado (415), tamaño (413) e imagen que no se
+  decodifica (400). El límite de tamaño se comprueba tras recibir el fichero: el límite real
+  del cuerpo lo debe poner el proxy.
+- Inferencia medida en la CPU local (i5-14400F), servicio caliente: ~32 ms por imagen.
+- Pendiente para el paso 6: logging estructurado, Dockerfile (cómo entran los pesos en la
+  imagen), CI instalando el extra `api`, y número de workers.
