@@ -85,31 +85,47 @@ def download_file(url: str, dest: Path, timeout: float = 60) -> Path:
     return dest
 
 
-def verify_or_record_checksum(archive: Path, checksums_path: Path) -> str:
-    """Verifica el SHA256 de ``archive`` o lo registra si es la primera vez que se ve.
+def _load_checksums(checksums_path: Path) -> dict[str, str]:
+    if not checksums_path.exists():
+        return {}
+    return json.loads(checksums_path.read_text(encoding="utf-8"))
+
+
+def record_checksum(archive: Path, checksums_path: Path) -> str:
+    """Guarda el SHA256 de ``archive``, sustituyendo el que hubiera con ese nombre.
 
     Los hashes se guardan en un JSON ``{nombre_de_fichero: sha256}``.
     """
-    checksums: dict[str, str] = {}
-    if checksums_path.exists():
-        checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
-
+    checksums = _load_checksums(checksums_path)
     actual = sha256_file(archive)
-    expected = checksums.get(archive.name)
+    checksums[archive.name] = actual
+    checksums_path.parent.mkdir(parents=True, exist_ok=True)
+    checksums_path.write_text(
+        json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    logger.info("Recorded SHA256 for %s in %s: %s", archive.name, checksums_path, actual)
+    return actual
+
+
+def verify_checksum(archive: Path, checksums_path: Path) -> str:
+    """Comprueba el SHA256 de ``archive`` contra el registrado; falla si no hay ninguno."""
+    expected = _load_checksums(checksums_path).get(archive.name)
     if expected is None:
-        checksums[archive.name] = actual
-        checksums_path.parent.mkdir(parents=True, exist_ok=True)
-        checksums_path.write_text(
-            json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        logger.info("Recorded SHA256 for %s in %s: %s", archive.name, checksums_path, actual)
-    elif actual != expected:
+        raise KeyError(f"No SHA256 recorded for {archive.name} in {checksums_path}")
+    actual = sha256_file(archive)
+    if actual != expected:
         raise ChecksumMismatchError(
             f"SHA256 mismatch for {archive.name}: expected {expected}, got {actual}"
         )
-    else:
-        logger.info("SHA256 verified for %s", archive.name)
+    logger.info("SHA256 verified for %s", archive.name)
     return actual
+
+
+def verify_or_record_checksum(archive: Path, checksums_path: Path) -> str:
+    """Verifica el SHA256 de ``archive`` o lo registra si es la primera vez que se ve."""
+    if archive.name in _load_checksums(checksums_path):
+        return verify_checksum(archive, checksums_path)
+    return record_checksum(archive, checksums_path)
 
 
 def extract_categories(archive: Path, raw_dir: Path, categories: Iterable[str]) -> None:
