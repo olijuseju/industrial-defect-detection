@@ -11,7 +11,9 @@ imgsz: 640
 # Las etiquetas llevan 4 clases; single_cls las entrena como una sola.
 single_cls: true
 
-epochs: 100
-patience: 30   # early stopping: épocas sin mejora en validación
+epochs: 300
+# Early stopping: épocas sin mejora en validación. Con 30, un colapso en las épocas 6-8
+# hizo que el run parase en la 35, todavía recuperándose, y guardase la época 5.
+patience: 100
 batch: 16
 seed: 42
