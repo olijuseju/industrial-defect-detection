@@ -184,6 +184,14 @@ Diseño acordado del paso 5 (inferencia y API):
 - Validación de la subida: content-type declarado (415), tamaño (413) e imagen que no se
   decodifica (400). El límite de tamaño se comprueba tras recibir el fichero: el límite real
   del cuerpo lo debe poner el proxy.
-- Inferencia medida en la CPU local (i5-14400F), servicio caliente: ~32 ms por imagen.
+- Medido en la CPU local (i5-14400F), servicio caliente, imágenes PNG de 1024 px: ~32 ms de
+  inferencia del modelo, pero ~84 ms por petición completa (subida, decodificación, pre y
+  posproceso), es decir, ~12 imágenes/s con un proceso. 40 peticiones con 8 en paralelo:
+  todas 200 y con resultados idénticos por imagen.
+- JPEG (calidad 90) de una imagen que en PNG da 1 caja da 2 cajas solapadas: el modelo solo
+  se entrenó con PNG. El veredicto no cambia. No se ha medido el efecto de forma sistemática.
+- Defecto conocido: los `logger.info` de la app y del Predictor no se ven al arrancar con
+  uvicorn (solo salen sus logs de acceso), porque nadie configura el logging del paquete.
+  Se resuelve en el paso 6 con el logging estructurado.
 - Pendiente para el paso 6: logging estructurado, Dockerfile (cómo entran los pesos en la
   imagen), CI instalando el extra `api`, y número de workers.
