@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
         "--config",
         type=Path,
         required=True,
-        help="Config con la que se entrenó: fija el dataset, el fold y single_cls",
+        help="Config con la que se entrenó: fija dataset, fold, single_cls y umbral",
     )
     parser.add_argument(
         "--test",
@@ -39,6 +39,7 @@ def main() -> None:
         args.weights,
         config.data_yaml,
         config.single_cls,
+        config.confidence,
         include_test=args.test,
         runs_dir=args.runs_dir,
         device=args.device,

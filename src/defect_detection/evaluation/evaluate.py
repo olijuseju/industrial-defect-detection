@@ -6,8 +6,9 @@ Dos niveles de métricas:
 - Por imagen: en cuántas piezas buenas salta una falsa alarma y en cuántas defectuosas se
   detecta algo. Es lo que decide si una pieza se aparta de la línea.
 
-Las métricas por imagen dependen del umbral de confianza. Se elige en validación (máximo
-F1) y se aplica sin cambios en test, para no ajustar nada con los datos de test.
+Las métricas por imagen dependen del umbral de confianza. Viene de la configuración y se
+decide mirando solo validación, donde además se tabulan varios umbrales; en test se aplica
+sin cambios, para no ajustar nada con los datos de test.
 """
 
 import logging
@@ -16,7 +17,6 @@ from pathlib import Path
 
 import yaml
 from ultralytics import YOLO
-from ultralytics.utils.metrics import smooth
 
 from defect_detection.data.download import sha256_file
 from defect_detection.data.split import TEST
@@ -95,25 +95,17 @@ def top_confidences(model: YOLO, images: list[Path], device: str | None = None) 
     return [float(result.boxes.conf.max()) if len(result.boxes) else 0.0 for result in results]
 
 
-def best_f1_confidence(box_metrics) -> float:
-    """Confianza que maximiza F1, con el mismo criterio que usa Ultralytics al informar P y R."""
-    index = smooth(box_metrics.f1_curve.mean(0), 0.1).argmax()
-    return float(box_metrics.px[index])
-
-
 def evaluate_split(
     model: YOLO,
     data_yaml: Path,
     split: str,
     single_cls: bool,
     runs_dir: Path,
-    confidence: float | None = None,
+    confidence: float,
+    sweep: bool = False,
     device: str | None = None,
-) -> tuple[dict, float]:
-    """Métricas de una partición y el umbral de confianza usado en las de imagen.
-
-    Si ``confidence`` es ``None`` se toma el de máximo F1 de esta misma partición.
-    """
+) -> dict:
+    """Métricas de una partición; ``sweep`` añade las de imagen con varios umbrales."""
     metrics = model.val(
         data=str(data_yaml.resolve()),
         split=split,
@@ -141,40 +133,41 @@ def evaluate_split(
             "map50_95": float(box.map),
         },
     }
-    if confidence is None:
-        confidence = best_f1_confidence(box)
-        # Solo en la partición donde se elige el umbral: enseña cuánto cambia el resultado
-        # con él. En test no se tabula para no tener la tentación de elegir mirándolo.
+    report["image_level"] = image_level_metrics(samples, confidence).to_dict()
+    if sweep:
         report["image_level_by_confidence"] = {
             f"{threshold:.2f}": image_level_metrics(samples, threshold).to_dict()
             for threshold in SWEEP_THRESHOLDS
         }
-    report["image_level"] = image_level_metrics(samples, confidence).to_dict()
-    return report, confidence
+    return report
 
 
 def evaluate(
     weights: Path,
     data_yaml: Path,
     single_cls: bool,
+    confidence: float,
     include_test: bool = False,
     runs_dir: Path = Path("runs"),
     device: str | None = None,
 ) -> dict:
-    """Evalúa en validación y, solo si se pide, en test con el umbral elegido en validación."""
+    """Evalúa en validación y, solo si se pide, en test.
+
+    Los umbrales alternativos se tabulan solo en validación: en test no, para no tener la
+    tentación de elegir el umbral mirándolo.
+    """
     model = YOLO(str(weights))
     report: dict = {
         "weights": {"file": weights.name, "sha256": sha256_file(weights)},
         "data": data_yaml.as_posix(),
         "single_cls": single_cls,
+        "confidence": confidence,
     }
-    report[VAL], confidence = evaluate_split(
-        model, data_yaml, VAL, single_cls, runs_dir, device=device
+    report[VAL] = evaluate_split(
+        model, data_yaml, VAL, single_cls, runs_dir, confidence, sweep=True, device=device
     )
-    report["confidence"] = confidence
-    logger.info("Confidence threshold chosen on val: %.3f", confidence)
     if include_test:
-        report[TEST], _ = evaluate_split(
-            model, data_yaml, TEST, single_cls, runs_dir, confidence=confidence, device=device
+        report[TEST] = evaluate_split(
+            model, data_yaml, TEST, single_cls, runs_dir, confidence, device=device
         )
     return report

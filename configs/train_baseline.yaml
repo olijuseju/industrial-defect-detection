@@ -17,3 +17,8 @@ epochs: 300
 patience: 100
 batch: 16
 seed: 42
+
+# Umbral para las métricas por imagen (scripts/evaluate.py). Fijado mirando solo validación:
+# con lr5e-4, entre 0.25 y 0.50 se detectan 13 de 14 piezas defectuosas con 1 falsa alarma
+# en 14 buenas; el de máximo F1 (0.75) dejaba pasar 4 de 14.
+confidence: 0.25

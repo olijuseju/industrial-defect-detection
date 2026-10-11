@@ -1,0 +1,61 @@
+{
+  "weights": {
+    "file": "baseline.pt",
+    "sha256": "13b13d013fdad548e46a38db46fc034554fc013f17b0917bdca53fee128d49e3"
+  },
+  "data": "data/processed/hazelnut/fold0.yaml",
+  "single_cls": true,
+  "confidence": 0.25,
+  "val": {
+    "images": 28,
+    "boxes": 15,
+    "box_level": {
+      "precision": 0.9682130656624868,
+      "recall": 0.6666666666666666,
+      "map50": 0.8037033950130198,
+      "map50_95": 0.5212534299309708
+    },
+    "image_level": {
+      "good_images": 14,
+      "false_alarms": 0,
+      "defective_images": 14,
+      "detected": 13,
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.9285714285714286
+    },
+    "image_level_by_confidence": {
+      "0.10": {
+        "good_images": 14,
+        "false_alarms": 0,
+        "defective_images": 14,
+        "detected": 14,
+        "false_alarm_rate": 0.0,
+        "detection_rate": 1.0
+      },
+      "0.25": {
+        "good_images": 14,
+        "false_alarms": 0,
+        "defective_images": 14,
+        "detected": 13,
+        "false_alarm_rate": 0.0,
+        "detection_rate": 0.9285714285714286
+      },
+      "0.50": {
+        "good_images": 14,
+        "false_alarms": 0,
+        "defective_images": 14,
+        "detected": 10,
+        "false_alarm_rate": 0.0,
+        "detection_rate": 0.7142857142857143
+      },
+      "0.75": {
+        "good_images": 14,
+        "false_alarms": 0,
+        "defective_images": 14,
+        "detected": 6,
+        "false_alarm_rate": 0.0,
+        "detection_rate": 0.42857142857142855
+      }
+    }
+  }
+}

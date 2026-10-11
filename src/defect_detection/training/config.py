@@ -19,6 +19,9 @@ class TrainConfig:
     patience: int
     batch: int
     seed: int
+    # Umbral de confianza a partir del cual una detección cuenta al evaluar por imagen.
+    # No interviene en el entrenamiento.
+    confidence: float
     # Argumentos de ``YOLO.train`` que solo fija algún experimento (optimizador, lr0...).
     # Lo que no aparece aquí se queda con el valor por defecto de Ultralytics.
     hyperparameters: dict[str, Any] = field(default_factory=dict)

@@ -14,6 +14,11 @@ patience: 100
 batch: 16
 seed: 42
 
+# Umbral para las métricas por imagen (scripts/evaluate.py). Fijado mirando solo validación:
+# con lr5e-4, entre 0.25 y 0.50 se detectan 13 de 14 piezas defectuosas con 1 falsa alarma
+# en 14 buenas; el de máximo F1 (0.75) dejaba pasar 4 de 14.
+confidence: 0.25
+
 # En el baseline, `optimizer: auto` de Ultralytics elige AdamW con lr0=0.002, momentum=0.9 y
 # warmup_bias_lr=0. Al fijar el optimizador a mano esos dos últimos vuelven a sus valores por
 # defecto (0.937 y 0.1), así que se declaran aquí para que lo único que cambie sea lr0.

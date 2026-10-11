@@ -23,6 +23,7 @@ def make_config(dataset: Path) -> TrainConfig:
         patience=2,
         batch=4,
         seed=1,
+        confidence=0.25,
     )
 
 

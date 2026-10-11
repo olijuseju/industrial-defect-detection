@@ -8,7 +8,6 @@ import yaml
 from defect_detection.evaluation import evaluate as evaluation
 from defect_detection.evaluation.evaluate import (
     ImageLevelMetrics,
-    best_f1_confidence,
     count_boxes,
     image_level_metrics,
     partition_images,
@@ -37,13 +36,6 @@ def make_dataset(root: Path) -> Path:
     return data_yaml
 
 
-def fake_box_metrics(best_confidence: float) -> SimpleNamespace:
-    """Métricas con una curva F1 cuyo máximo está en ``best_confidence``."""
-    px = np.linspace(0, 1, 1000)
-    f1_curve = (1 - np.abs(px - best_confidence))[None, :]
-    return SimpleNamespace(px=px, f1_curve=f1_curve, mp=0.9, mr=0.8, map50=0.7, map=0.6)
-
-
 class FakeBoxes:
     def __init__(self, confidences: list[float]):
         self.conf = np.array(confidences)
@@ -62,7 +54,7 @@ class FakeYOLO:
 
     def val(self, **arguments):
         FakeYOLO.val_calls.append(arguments)
-        return SimpleNamespace(box=fake_box_metrics(0.5))
+        return SimpleNamespace(box=SimpleNamespace(mp=0.9, mr=0.8, map50=0.7, map=0.6))
 
     def predict(self, images: list[str], conf: float, **_):
         tops = [TOP_CONFIDENCE[Path(image).stem] for image in images]
@@ -111,34 +103,40 @@ def test_rates_are_zero_without_images():
     assert empty.false_alarm_rate == 0.0 and empty.detection_rate == 0.0
 
 
-def test_best_f1_confidence_finds_the_peak_of_the_curve():
-    assert best_f1_confidence(fake_box_metrics(0.4)) == pytest.approx(0.4, abs=0.01)
-
-
 def test_evaluate_does_not_touch_test_unless_asked(tmp_path: Path, fake_yolo: type[FakeYOLO]):
     data_yaml = make_dataset(tmp_path)
     weights = tmp_path / "model.pt"
     weights.write_bytes(b"weights")
 
-    report = evaluation.evaluate(weights, data_yaml, single_cls=True, runs_dir=tmp_path / "runs")
+    report = evaluation.evaluate(
+        weights, data_yaml, single_cls=True, confidence=0.5, runs_dir=tmp_path / "runs"
+    )
 
     assert [call["split"] for call in fake_yolo.val_calls] == ["val"]
     assert fake_yolo.val_calls[0]["single_cls"] is True
     assert "test" not in report
-    assert report["confidence"] == pytest.approx(0.5, abs=0.01)
+    assert report["confidence"] == 0.5
+    assert report["val"]["box_level"]["map50_95"] == 0.6
     assert report["val"]["images"] == 5 and report["val"]["boxes"] == 3
     assert report["val"]["image_level"]["detected"] == 1
     assert report["val"]["image_level"]["false_alarms"] == 1
     assert report["val"]["image_level_by_confidence"]["0.25"]["detected"] == 2
 
 
-def test_test_split_uses_the_threshold_chosen_on_val(tmp_path: Path, fake_yolo: type[FakeYOLO]):
+def test_test_split_uses_the_same_threshold_and_has_no_sweep(
+    tmp_path: Path, fake_yolo: type[FakeYOLO]
+):
     data_yaml = make_dataset(tmp_path)
     weights = tmp_path / "model.pt"
     weights.write_bytes(b"weights")
 
     report = evaluation.evaluate(
-        weights, data_yaml, single_cls=True, include_test=True, runs_dir=tmp_path / "runs"
+        weights,
+        data_yaml,
+        single_cls=True,
+        confidence=0.5,
+        include_test=True,
+        runs_dir=tmp_path / "runs",
     )
 
     assert [call["split"] for call in fake_yolo.val_calls] == ["val", "test"]
