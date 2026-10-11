@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from defect_detection.evaluation.evaluate import evaluate
+from defect_detection.logging_config import configure_logging
 from defect_detection.training.config import TrainConfig
 
 
@@ -31,9 +32,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     config = TrainConfig.from_yaml(args.config)
     report = evaluate(
         args.weights,

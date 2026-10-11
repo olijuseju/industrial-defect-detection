@@ -3,12 +3,12 @@
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 
 import cv2
 
 from defect_detection.inference.predictor import DEFAULT_CONFIDENCE, Predictor, annotate
+from defect_detection.logging_config import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,11 +24,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     # Los logs van a stderr para que stdout sea solo el JSON y se pueda encadenar con jq.
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        stream=sys.stderr,
-    )
+    configure_logging()
     image = cv2.imread(str(args.image), cv2.IMREAD_COLOR)
     if image is None:
         raise SystemExit(f"Cannot read image {args.image}")

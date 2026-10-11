@@ -7,6 +7,7 @@ from pathlib import Path
 
 from defect_detection.data.config import DataConfig
 from defect_detection.evaluation.evaluate import false_alarms_on_good, unused_good_images
+from defect_detection.logging_config import configure_logging
 from defect_detection.training.config import TrainConfig
 
 
@@ -26,9 +27,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     config = TrainConfig.from_yaml(args.config)
     category = DataConfig.from_yaml(args.data_config).category
     split_path = args.split or Path("configs/splits") / f"{category}.json"

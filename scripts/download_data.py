@@ -1,11 +1,11 @@
 """CLI para descargar y extraer MVTec AD en data/raw. La lógica vive en el paquete."""
 
 import argparse
-import logging
 import os
 from pathlib import Path
 
 from defect_detection.data.download import MVTEC_AD_CATEGORIES, ensure_dataset
+from defect_detection.logging_config import configure_logging
 
 URL_ENV_VAR = "MVTEC_AD_URL"
 
@@ -28,9 +28,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     url = args.url or (None if args.archive else os.environ.get(URL_ENV_VAR))
     ensure_dataset(
         raw_dir=args.raw_dir,

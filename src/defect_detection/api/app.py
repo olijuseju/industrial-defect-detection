@@ -9,6 +9,8 @@ da formato a la respuesta. El modelo se carga una vez al arrancar.
 """
 
 import logging
+import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -21,8 +23,11 @@ from defect_detection import __version__
 from defect_detection.api.schemas import HealthOut, PredictionOut
 from defect_detection.api.settings import Settings
 from defect_detection.inference.predictor import Prediction, Predictor, annotate
+from defect_detection.logging_config import JSON, configure_logging, request_id_var
 
 logger = logging.getLogger(__name__)
+
+REQUEST_ID_HEADER = "X-Request-ID"
 
 ALLOWED_CONTENT_TYPES = ("image/png", "image/jpeg")
 
@@ -65,6 +70,7 @@ def read_image(file: UploadFile, max_bytes: int) -> np.ndarray:
 def create_app(settings: Settings | None = None, predictor: Predictor | None = None) -> FastAPI:
     """Crea la aplicación. ``predictor`` permite inyectar uno falso en los tests."""
     settings = settings or Settings.from_env()
+    configure_logging(default_format=JSON, capture_uvicorn=True)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -74,7 +80,13 @@ def create_app(settings: Settings | None = None, predictor: Predictor | None = N
         app.state.settings = settings
         # La primera predicción es más lenta; se hace ahora y no con la primera petición.
         app.state.predictor.predict(np.zeros((640, 640, 3), np.uint8))
-        logger.info("Service ready")
+        logger.info(
+            "Service ready",
+            extra={
+                "model": app.state.predictor.weights.name,
+                "confidence": app.state.predictor.confidence,
+            },
+        )
         yield
 
     app = FastAPI(
@@ -84,6 +96,47 @@ def create_app(settings: Settings | None = None, predictor: Predictor | None = N
         lifespan=lifespan,
     )
 
+    @app.middleware("http")
+    async def log_request(request: Request, call_next):
+        """Una línea de log por petición, con un identificador que se devuelve al cliente.
+
+        Se respeta el ``X-Request-ID`` que envíe el cliente o el proxy, para poder seguir
+        una petición a través de varios servicios.
+        """
+        request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        token = request_id_var.set(request_id)
+        start = time.perf_counter()
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers[REQUEST_ID_HEADER] = request_id
+            return response
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            if status_code >= 500:
+                level = logging.ERROR
+            elif request.url.path == "/health":
+                # El orquestador la consulta cada pocos segundos: a INFO taparía el resto.
+                level = logging.DEBUG
+            else:
+                level = logging.INFO
+            logger.log(
+                level,
+                "%s %s -> %d in %.1f ms",
+                request.method,
+                request.url.path,
+                status_code,
+                duration_ms,
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status_code,
+                    "duration_ms": duration_ms,
+                },
+            )
+            request_id_var.reset(token)
+
     def predict_upload(file: UploadFile, predictor: Predictor, settings: Settings):
         image = read_image(file, settings.max_upload_bytes)
         prediction = predictor.predict(image)
@@ -92,6 +145,13 @@ def create_app(settings: Settings | None = None, predictor: Predictor | None = N
             prediction.defective,
             len(prediction.detections),
             prediction.inference_ms,
+            extra={
+                "defective": prediction.defective,
+                "detections": len(prediction.detections),
+                "inference_ms": prediction.inference_ms,
+                "width": prediction.width,
+                "height": prediction.height,
+            },
         )
         return image, prediction
 

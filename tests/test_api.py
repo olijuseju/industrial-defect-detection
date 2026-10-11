@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import cv2
@@ -142,3 +143,53 @@ def test_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch)
     assert settings.model_path == Path("/models/custom.pt")
     assert settings.confidence == 0.4
     assert settings.max_upload_mb == 10.0
+
+
+def service_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Registros de la API, sin los del cliente HTTP de pruebas."""
+    return [record for record in caplog.records if record.name == "defect_detection.api.app"]
+
+
+def test_every_response_carries_a_request_id(client: TestClient):
+    generated = client.get("/health").headers["x-request-id"]
+    echoed = client.get("/health", headers={"X-Request-ID": "from-proxy"}).headers["x-request-id"]
+
+    assert len(generated) == 32
+    assert echoed == "from-proxy"
+
+
+def test_request_and_prediction_logs_share_the_request_id(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level(logging.INFO, logger="defect_detection.api.app"):
+        client.post(
+            "/predict",
+            files={"file": ("part.png", png_bytes(), "image/png")},
+            headers={"X-Request-ID": "req-1"},
+        )
+
+    prediction, request = service_records(caplog)[-2:]
+    assert prediction.request_id == request.request_id == "req-1"
+    assert prediction.defective is True and prediction.detections == 1
+    assert (request.method, request.path, request.status) == ("POST", "/predict", 200)
+    assert request.duration_ms >= 0
+
+
+def test_rejected_uploads_are_logged_with_their_status(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level(logging.INFO, logger="defect_detection.api.app"):
+        client.post("/predict", files={"file": ("notes.txt", b"hello", "text/plain")})
+
+    record = service_records(caplog)[-1]
+    assert record.status == 415
+    assert record.levelno == logging.INFO
+
+
+def test_health_checks_are_logged_at_debug_level(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level(logging.DEBUG, logger="defect_detection.api.app"):
+        client.get("/health")
+
+    assert service_records(caplog)[-1].levelno == logging.DEBUG

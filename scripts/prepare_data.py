@@ -7,6 +7,7 @@ from pathlib import Path
 from defect_detection.data.config import DataConfig
 from defect_detection.data.prepare import prepare_dataset
 from defect_detection.data.split import class_counts, load_or_create_split
+from defect_detection.logging_config import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,9 +26,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     config = DataConfig.from_yaml(args.config)
     category_dir = args.raw_dir / config.category
     split_path = args.split or Path("configs/splits") / f"{config.category}.json"

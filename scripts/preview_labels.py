@@ -1,10 +1,10 @@
 """CLI: hojas de contacto con las cajas derivadas de las máscaras, para elegir umbrales."""
 
 import argparse
-import logging
 from pathlib import Path
 
 from defect_detection.data.preview import write_contact_sheets
+from defect_detection.logging_config import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,9 +19,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     out_dir = args.out_dir or Path("data/processed") / args.category / "preview"
     write_contact_sheets(args.raw_dir / args.category, out_dir, args.merge_gap_px, args.min_area_px)
 

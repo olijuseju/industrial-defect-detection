@@ -1,10 +1,10 @@
 """CLI: empaqueta el dataset procesado en un zip, o lo desempaqueta verificando su SHA256."""
 
 import argparse
-import logging
 from pathlib import Path
 
 from defect_detection.data.package import package_dataset, unpack_dataset
+from defect_detection.logging_config import configure_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,9 +21,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     if args.command == "pack":
         package_dataset(
             args.processed_dir / args.category,

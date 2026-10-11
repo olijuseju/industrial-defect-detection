@@ -1,9 +1,9 @@
 """CLI: entrena un modelo a partir de un YAML de configs/."""
 
 import argparse
-import logging
 from pathlib import Path
 
+from defect_detection.logging_config import configure_logging
 from defect_detection.training.config import TrainConfig
 from defect_detection.training.train import train
 
@@ -20,9 +20,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
     overrides = {
         key: value
         for key, value in (("epochs", args.epochs), ("device", args.device), ("name", args.name))
