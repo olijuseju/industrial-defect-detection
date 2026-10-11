@@ -1,0 +1,17 @@
+# Baseline (paso 4): una sola clase `defect`, validando con el fold 0.
+name: baseline
+dataset: data/processed/hazelnut
+fold: 0
+
+# Modelo nano preentrenado: con 84 imágenes de train, uno mayor sobreajusta antes.
+# Ultralytics lo descarga a esta ruta la primera vez (models/ está fuera de git).
+model: models/yolo11n.pt
+# Las imágenes son 1024x1024; 640 es el baseline y 1024 queda como experimento.
+imgsz: 640
+# Las etiquetas llevan 4 clases; single_cls las entrena como una sola.
+single_cls: true
+
+epochs: 100
+patience: 30   # early stopping: épocas sin mejora en validación
+batch: 16
+seed: 42
