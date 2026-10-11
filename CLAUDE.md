@@ -8,7 +8,7 @@ Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI 
 
 ## Commands
 
-The project is managed with `uv` (Python 3.11, pinned in `.python-version`; `requires-python` is `>=3.11,<3.13`).
+The project is managed with `uv` (Python 3.11, pinned in `.python-version`; `requires-python` is `>=3.11,<3.14`).
 
 ```bash
 uv sync                      # install runtime deps + dev group (pytest, ruff)
