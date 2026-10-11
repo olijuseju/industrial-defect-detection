@@ -6,6 +6,7 @@ la misma lógica y el resto del código no depende de la librería de detección
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,15 +77,19 @@ class Predictor:
         self.confidence = confidence
         self.device = device
         self._model = YOLO(str(weights))
+        # Un modelo de Ultralytics no admite predicciones simultáneas desde varios hilos, y
+        # la API atiende cada petición en un hilo distinto.
+        self._lock = threading.Lock()
         logger.info("Loaded %s (confidence threshold %.2f)", weights, confidence)
 
     def predict(self, image: np.ndarray) -> Prediction:
         """Detecta defectos en una imagen BGR (la que devuelve ``cv2.imread``)."""
         if image.ndim != 3 or image.shape[2] != 3:
             raise ValueError(f"Expected a BGR image of shape (H, W, 3), got {image.shape}")
-        result = self._model.predict(
-            image, conf=self.confidence, device=self.device, verbose=False
-        )[0]
+        with self._lock:
+            result = self._model.predict(
+                image, conf=self.confidence, device=self.device, verbose=False
+            )[0]
         boxes = result.boxes
         detections = [
             Detection(
