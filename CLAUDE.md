@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and data preparation, both under `src/defect_detection/data/` with thin CLIs in `scripts/`. The `training`, `inference` and `api` subpackages are empty `__init__.py` files, and `notebooks/` and `.github/workflows/` are empty directories. See the roadmap at the end for the current step.
+Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and preparation (`data/`), config-driven training (`training/`) and evaluation (`evaluation/`), each with a thin CLI in `scripts/`. The `inference` and `api` subpackages are empty `__init__.py` files and `.github/workflows/` is an empty directory. See the roadmap at the end for the current step.
 
 ## Commands
 
@@ -27,6 +27,16 @@ uv run python scripts/download_data.py --archive /path/to/mvtec_anomaly_detectio
 # YOLO dataset into data/processed/<category> (rebuilt from scratch on every run)
 uv run python scripts/prepare_data.py                       # uses configs/data_hazelnut.yaml
 uv run python scripts/preview_labels.py --merge-gap-px 31 --min-area-px 300   # contact sheets of the boxes
+
+# Processed dataset <-> reproducible zip for Colab (SHA256 kept in configs/dataset_checksums.json)
+uv run python scripts/package_dataset.py pack                # writes data/processed/hazelnut.zip
+uv run python scripts/package_dataset.py unpack <zip>        # verifies the checksum, then extracts
+
+# Training. Real runs happen in Colab through notebooks/train_colab.ipynb; locally only as a smoke test
+uv run python scripts/train.py --config configs/train_lr5e-4.yaml --epochs 1 --device cpu
+
+# Evaluation on validation; writes reports/metrics_<name>.json. --test also evaluates the test split
+uv run python scripts/evaluate.py --weights models/lr5e-4.pt --config configs/train_lr5e-4.yaml
 ```
 
 ## Layout and intent
@@ -34,11 +44,12 @@ uv run python scripts/preview_labels.py --merge-gap-px 31 --min-area-px 300   # 
 `src/` layout, built with hatchling; the importable package is `defect_detection`, split by pipeline stage:
 
 - `data/`: dataset download and preparation. `prepare.py` is the entry point and composes the rest: `mvtec.py` (on-disk layout of a category), `masks.py` (mask → boxes), `split.py` (test + k folds), `config.py` (`DataConfig` read from `configs/data_<category>.yaml`)
-- `training/`: YOLO training
+- `training/`: YOLO training. `TrainConfig` is read from `configs/train_<name>.yaml`; its optional `hyperparameters` mapping is passed straight to `YOLO.train`
+- `evaluation/`: box-level metrics (from Ultralytics) and image-level metrics (false alarms on good parts, defective parts flagged)
 - `inference/`: prediction
 - `api/`: FastAPI service; its dependencies live in the optional `api` extra, so code outside `api/` must not import FastAPI or uvicorn
 
-Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (entry points), `notebooks/`, `data/raw` and `data/processed`, `models/`.
+Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (entry points), `notebooks/` (Colab notebook that only orchestrates the scripts), `reports/` (committed metrics JSON), `data/raw` and `data/processed`, `models/`.
 
 ## Things to know
 
@@ -46,6 +57,9 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
 - **Data and model weights are not in git.** `.gitignore` excludes everything under `data/` and `models/` except `.gitkeep`, plus `*.pt` and `*.onnx`; the plan is to version them with DVC. Ultralytics `runs/` and `mlruns/` are also ignored.
 - Existing comments in `pyproject.toml` and `.gitignore` are written in Spanish. Code follows the same rule: docstrings and comments in Spanish, identifiers, log messages and exception messages in English.
 - **`configs/splits/<category>.json` is the source of truth for the split** and is committed. `load_or_create_split` reuses it and fails if the config no longer matches; changing which images are in test requires `scripts/prepare_data.py --force-split`, which invalidates any metric already reported.
+- **Colab sets the version floor.** The notebook runs `pip install -e .` on Colab's Python (3.13 when step 4 was done) and must keep Colab's CUDA build of torch, so `requires-python` and the lower bounds of `torch`/`torchvision` in `pyproject.toml` have to stay compatible with what Colab ships. Local versions are pinned by `uv.lock`.
+- **`single_cls=True` renames the class to `item`.** Labels always carry the 4 defect classes; the trained checkpoints have a single class named `item`, not `defect`. Evaluation must also pass `single_cls=True`.
+- **The test split is evaluated once.** `scripts/evaluate.py` only touches it with `--test`. It was used for `lr5e-4` (`reports/metrics_lr5e-4.json`); do not re-run it to compare experiments, use validation.
 - **Processed dataset layout.** `data/processed/<category>/` has flat `images/` and `labels/` plus `test.txt`, `foldN_train.txt`, `foldN_val.txt` and `foldN.yaml` in its root. The lists use `./images/...` paths and the YAMLs set no `path`, so Ultralytics resolves everything relative to the files themselves and the directory can be moved as is. Do not move the lists into subfolders: Ultralytics resolves `./` against the folder of the `.txt`.
 
 ## Cómo trabajar conmigo
@@ -70,8 +84,8 @@ Pasos (no avanzar sin mi confirmación):
 1. Setup ✅ (uv, src layout, WSL2, torch CPU local)
 2. Descarga dataset MVTec AD ✅ (15 categorías en data/raw, SHA256 en configs/dataset_checksums.json)
 3. Preparación de datos: máscaras → etiquetas YOLO + splits ✅ (hazelnut: 140 imágenes, 77 cajas, test + 4 folds)
-4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP) ← SIGUIENTE
-5. Inferencia + API FastAPI (imagen → JSON + imagen anotada)
+4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP) ✅ (modelo `lr5e-4`; métricas en reports/)
+5. Inferencia + API FastAPI (imagen → JSON + imagen anotada) ← SIGUIENTE
 6. Docker + tests + logging estructurado + CI (GitHub Actions)
 7. Versionado (DVC/MLflow) + README con resultados reales
 8. (Fase 2 del portfolio, otro momento) anomaly detection con anomalib
@@ -112,6 +126,29 @@ Diseño acordado del paso 3 (preparación de datos):
 - Una imagen defectuosa que se quede sin cajas es un error, no un negativo.
 - Clases: las etiquetas llevan siempre las 4 clases. El baseline de una sola clase `defect`
   se entrena con single_cls=True de Ultralytics; 4 clases queda como experimento comparado.
-  single_cls aún no está probado: se valida al entrenar en el paso 4.
-- Pendiente para el paso 4: resolución de entrada (imgsz; las imágenes son 1024×1024) y
-  cómo llega el dataset a Colab.
+
+Diseño acordado del paso 4 (entrenamiento y evaluación):
+- Entrenamiento desde config (`configs/train_<nombre>.yaml`) con `scripts/train.py`; el
+  notebook de Colab solo clona el repo, instala, descomprime el dataset y llama al script.
+- El dataset llega a Colab como zip reproducible subido a Drive; su SHA256 se verifica antes
+  de extraer. Los runs se copian a Drive como `<name>-<commit corto>`.
+- Modelo YOLO11n preentrenado, imgsz 640, una clase (single_cls), valida con el fold 0,
+  semilla 42 y deterministic=True. El entrenamiento es reproducible entre sesiones de Colab.
+- `baseline` (optimizer=auto de Ultralytics: AdamW, lr0=0.002): las métricas caen a cero en
+  las épocas 6-16 y tarda ~100 épocas en recuperarse. Con patience=30 paraba en la 35
+  guardando la época 5; por eso epochs=300 y patience=100. Agota las 300 sin converger.
+- `lr5e-4`: igual salvo lr0=0.0005 (optimizer, momentum y warmup_bias_lr fijados a lo que
+  elige `auto`, para que solo cambie lr0). El bache dura ~12 épocas; mejor época 157.
+  Es el modelo elegido. La causa del bache no está verificada (hipótesis: AMP se salta las
+  primeras actualizaciones por gradientes desbordados; no afirmarlo como hecho).
+- Validación en Colab (best.pt): baseline P 0.969, R 0.667, mAP50 0.807, mAP50-95 0.523;
+  lr5e-4 P 0.812, R 0.864, mAP50 0.889, mAP50-95 0.682.
+- Umbral de confianza para métricas por imagen: `confidence: 0.25` en la config, fijado
+  mirando solo validación. El de máximo F1 se descartó: inestable entre Colab y local y
+  dejaba pasar 4 de 14 piezas defectuosas en validación.
+- Test (una sola evaluación, lr5e-4, 28 imágenes): P 0.846, R 0.857, mAP50 0.803,
+  mAP50-95 0.571; 14 de 14 defectuosas detectadas y 1 falsa alarma en 14 buenas.
+- Se dejó de ajustar aquí a propósito: con 15 defectos en validación, más experimentos
+  ajustarían al ruido. Pendientes como experimentos: 4 clases, imgsz 1024, k-fold completo.
+- Pendiente para el paso 5: el nombre de clase `item` (traducir a `defect` en la capa de
+  inferencia o reetiquetar) y reutilizar `confidence` como umbral de la API.
