@@ -1,11 +1,13 @@
 # Industrial defect detection
 
+[![CI](https://github.com/olijuseju/industrial-defect-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/olijuseju/industrial-defect-detection/actions/workflows/ci.yml)
+
 Defect detection on industrial parts with YOLO (Ultralytics), built as an end-to-end
 project rather than a notebook: reproducible data pipeline, config-driven training,
-evaluation with versioned metrics, and a FastAPI inference service.
+evaluation with versioned metrics, a FastAPI inference service, a Docker image and CI.
 
-> **Status: work in progress.** Data, training, evaluation and the API are done. Docker,
-> CI, structured logging and model versioning are not implemented yet (see [Roadmap](#roadmap)).
+> **Status: work in progress.** Data, training, evaluation, the API, Docker and CI are done.
+> Data and model versioning and cross-validated results are not (see [Roadmap](#roadmap)).
 
 ## What it does
 
@@ -15,6 +17,7 @@ evaluation with versioned metrics, and a FastAPI inference service.
 - Evaluates per box (precision, recall, mAP) and per image (defective parts flagged,
   false alarms on good parts).
 - Serves the model over HTTP: an image in, JSON or an annotated image out.
+- Ships as a Docker image, built and smoke-tested on every push.
 
 ## Results
 
@@ -94,6 +97,29 @@ curl -F "file=@part.png;type=image/png" http://127.0.0.1:8000/predict
 Interactive documentation is served at `/docs`. The service is configured with the
 `MODEL_PATH`, `CONFIDENCE` and `MAX_UPLOAD_MB` environment variables.
 
+Logs are one JSON object per line (`LOG_FORMAT=text` for a readable format). Every request
+gets an ID, taken from the `X-Request-ID` header or generated, which is returned to the
+client and attached to every log line written while handling it.
+
+## Docker
+
+The image contains the service but not the model: the weights are mounted at run time.
+
+```bash
+docker build -t defect-detection .
+docker run --rm -p 8000:8000 \
+  -v "$PWD/models/lr5e-4.pt:/models/model.pt:ro" defect-detection
+```
+
+- Two-stage build with dependencies installed from `uv.lock` (CPU-only PyTorch).
+- Runs as a non-root user and has a health check against `/health`.
+- `scripts/docker_smoke_test.sh <image> <weights.pt>` starts a container and checks the
+  endpoints; CI runs the same script with the public `yolo11n.pt` weights, because the
+  trained weights are not in the repository.
+
+The image is large: 2.5 GB on disk, about 570 MB compressed, most of it PyTorch. Serving
+an ONNX export without PyTorch would shrink it; that has not been done.
+
 ## Project layout
 
 ```
@@ -103,6 +129,7 @@ src/defect_detection/
   evaluation/  box-level and image-level metrics
   inference/   Predictor (no HTTP, no Ultralytics types in its output)
   api/         FastAPI service
+  logging_config.py  text or JSON logging for scripts and service
 scripts/       thin command-line entry points
 configs/       data and training configs, dataset checksums, the committed split
 reports/       metrics produced by the evaluation scripts
@@ -123,5 +150,5 @@ afterwards. The train/validation/test split is committed in `configs/splits/`.
 - [x] Data preparation: masks to YOLO labels, stratified test split + 4 folds
 - [x] Training and evaluation
 - [x] Inference layer and FastAPI service
-- [ ] Docker, structured logging and CI (GitHub Actions)
+- [x] Structured logging, CI (GitHub Actions) and Docker image
 - [ ] Data and model versioning (DVC/MLflow), cross-validated results

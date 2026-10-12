@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and preparation (`data/`), config-driven training (`training/`), evaluation (`evaluation/`), inference (`inference/`) and the FastAPI service (`api/`), each with a thin CLI in `scripts/` except the API, which is started with uvicorn. `.github/workflows/` is an empty directory. See the roadmap at the end for the current step.
+Industrial defect detection with YOLO (Ultralytics): training pipeline, FastAPI service and Docker deployment. Implemented so far: dataset download and preparation (`data/`), config-driven training (`training/`), evaluation (`evaluation/`), inference (`inference/`) and the FastAPI service (`api/`), each with a thin CLI in `scripts/` except the API, which is started with uvicorn. There is also structured logging, a Docker image for the service and a GitHub Actions workflow (lint, tests, image build + smoke test). See the roadmap at the end for the current step.
 
 ## Commands
 
@@ -44,7 +44,13 @@ uv run python scripts/false_alarms.py --weights models/lr5e-4.pt --config config
 uv run python scripts/predict.py data/raw/hazelnut/test/crack/000.png --out /tmp/crack.png
 
 # API (needs the `api` extra). Settings via MODEL_PATH, CONFIDENCE, MAX_UPLOAD_MB; docs at /docs
+# Logs: LOG_FORMAT=json|text (json by default in the API, text in the scripts), LOG_LEVEL
 uv run uvicorn defect_detection.api.app:create_app --factory
+
+# Docker: the weights are mounted, not baked into the image
+docker build -t defect-detection:dev .
+docker run --rm -p 8000:8000 -v "$PWD/models/lr5e-4.pt:/models/model.pt:ro" defect-detection:dev
+scripts/docker_smoke_test.sh defect-detection:dev models/lr5e-4.pt   # same script the CI runs
 ```
 
 ## Layout and intent
@@ -57,7 +63,9 @@ uv run uvicorn defect_detection.api.app:create_app --factory
 - `inference/`: `Predictor` loads the weights once and returns plain dataclasses (`Prediction`, `Detection`), never Ultralytics objects; `annotate` draws the boxes. Knows nothing about HTTP
 - `api/`: FastAPI service (`app.py` with the `create_app` factory, `settings.py` from environment variables, `schemas.py` for responses). It only validates the upload and calls the `Predictor`. Its dependencies live in the optional `api` extra, so code outside `api/` must not import FastAPI or uvicorn
 
-Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (entry points), `notebooks/` (Colab notebook that only orchestrates the scripts), `reports/` (committed metrics JSON), `data/raw` and `data/processed`, `models/`.
+`logging_config.py` (package root) configures logging for everything: scripts call `configure_logging()`, the API calls it with JSON as default and tags records with a request ID.
+
+Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (entry points), `notebooks/` (Colab notebook that only orchestrates the scripts), `reports/` (committed metrics JSON), `data/raw` and `data/processed`, `models/`. At the repo root: `Dockerfile`, `.dockerignore` (an allowlist) and `.github/workflows/ci.yml`.
 
 ## Things to know
 
@@ -70,6 +78,9 @@ Supporting directories: `configs/` (YAML, loaded with `pyyaml`), `scripts/` (ent
 - **The test split is evaluated once.** `scripts/evaluate.py` only touches it with `--test`. It was used for `lr5e-4` (`reports/metrics_lr5e-4.json`); do not re-run it to compare experiments, use validation.
 - **`uv add` / `uv remove` drop the `api` extra from the venv.** Run `uv sync --extra api` again afterwards, or `tests/test_api.py` is skipped (it uses `pytest.importorskip`) and uvicorn is missing.
 - **The test client needs `httpx2`, not `httpx`.** The installed Starlette deprecates `httpx` for `TestClient`; `httpx2` is in the dev group.
+- **The Docker image depends on Debian package names.** `opencv-python` needs system libraries missing from `python:slim` (`libgl1 libglib2.0-0t64 libsm6 libxext6`); those names are Debian 13's, so the base image is pinned to `python:3.11-slim-trixie`. Changing the base image means re-checking them (`ldd` on the cv2 `.so` files lists what is missing).
+- **The Dockerfile pins the uv version** (`ghcr.io/astral-sh/uv:<version>`) to the one used locally; bump it together with the local uv.
+- **CI cannot use the trained weights** (not in git): its smoke test runs the image with the public `yolo11n.pt`. It proves the image serves, not that it detects defects.
 - **Processed dataset layout.** `data/processed/<category>/` has flat `images/` and `labels/` plus `test.txt`, `foldN_train.txt`, `foldN_val.txt` and `foldN.yaml` in its root. The lists use `./images/...` paths and the YAMLs set no `path`, so Ultralytics resolves everything relative to the files themselves and the directory can be moved as is. Do not move the lists into subfolders: Ultralytics resolves `./` against the folder of the `.txt`.
 
 ## Cómo trabajar conmigo
@@ -96,8 +107,8 @@ Pasos (no avanzar sin mi confirmación):
 3. Preparación de datos: máscaras → etiquetas YOLO + splits ✅ (hazelnut: 140 imágenes, 77 cajas, test + 4 folds)
 4. Entrenamiento baseline YOLO (en Colab) + métricas (precision, recall, mAP) ✅ (modelo `lr5e-4`; métricas en reports/)
 5. Inferencia + API FastAPI (imagen → JSON + imagen anotada) ✅ (/health, /predict, /predict/annotated)
-6. Docker + tests + logging estructurado + CI (GitHub Actions) ← SIGUIENTE
-7. Versionado (DVC/MLflow) + README con resultados reales
+6. Docker + tests + logging estructurado + CI (GitHub Actions) ✅ (imagen con pesos montados; CI: lint, tests, build + humo)
+7. Versionado (DVC/MLflow) + README con resultados reales ← SIGUIENTE
 8. (Fase 2 del portfolio, otro momento) anomaly detection con anomalib
 
 Hechos del dataset que condicionan el diseño:
@@ -190,8 +201,31 @@ Diseño acordado del paso 5 (inferencia y API):
   todas 200 y con resultados idénticos por imagen.
 - JPEG (calidad 90) de una imagen que en PNG da 1 caja da 2 cajas solapadas: el modelo solo
   se entrenó con PNG. El veredicto no cambia. No se ha medido el efecto de forma sistemática.
-- Defecto conocido: los `logger.info` de la app y del Predictor no se ven al arrancar con
-  uvicorn (solo salen sus logs de acceso), porque nadie configura el logging del paquete.
-  Se resuelve en el paso 6 con el logging estructurado.
-- Pendiente para el paso 6: logging estructurado, Dockerfile (cómo entran los pesos en la
-  imagen), CI instalando el extra `api`, y número de workers.
+
+Diseño acordado del paso 6 (logging, CI y Docker):
+- Logging: un solo módulo (`logging_config.py`), solo librería estándar (descartado
+  structlog). JSON por línea en el servicio, texto en los scripts; `LOG_FORMAT`/`LOG_LEVEL`.
+  Arregla que los logs propios no se emitían bajo uvicorn.
+- Una línea por petición (método, ruta, estado, duración) y un `request_id` que se toma de
+  `X-Request-ID` o se genera, se devuelve al cliente y va en todos los registros de esa
+  petición (contextvar + LogRecordFactory). Los logs de uvicorn usan el mismo formato y su
+  log de acceso se apaga. `/health` se registra a DEBUG.
+- CI (GitHub Actions) en cada push y PR: lint (solo grupo dev, sin torch), tests en Python
+  3.11 y 3.13 con el extra `api` y `--locked`, y construcción de la imagen con prueba de humo.
+- Docker en dos etapas con uv y `uv.lock` (torch CPU, sin dev, `--no-editable`); la imagen
+  final solo recibe el entorno virtual, propiedad de root. Usuario `app` sin privilegios,
+  HEALTHCHECK contra /health, un proceso de uvicorn por contenedor (se escala con réplicas).
+- Los pesos NO van en la imagen: se montan en /models/model.pt (`MODEL_PATH`). Motivos: el
+  CI puede construir sin ellos y no hay que publicarlos (duda de licencia: están entrenados
+  con MVTec AD, CC BY-NC-SA). Descartado meterlos al construir o bajarlos de un Release.
+- `scripts/docker_smoke_test.sh` es la misma prueba en local y en CI: /health, /predict,
+  /predict/annotated, 415 con un fichero de texto y que no corre como root.
+- Medido: la imagen ocupa 2,51 GB en disco (`docker images`) y ~570 MB comprimida
+  (`docker save`). torch 773 MB, librerías del sistema de OpenCV 217 MB, polars 179 MB,
+  sympy 80 MB. Memoria del contenedor en reposo ~370 MB. Primera construcción local
+  1 min 41 s; trabajo docker del CI sin caché 4 min 19 s.
+- Mejora futura no hecha: exportar a ONNX y servir sin torch ni Ultralytics para reducir la
+  imagen. Tampoco hay límite de tamaño del cuerpo ni control de carga: eso es del proxy.
+- En la sesión en que se instaló Docker Desktop, el shell de Claude no tenía el grupo
+  `docker`; se rodeó con `wsl.exe -d Ubuntu --cd <repo> -e bash -lc "..."`. Una sesión nueva
+  no debería necesitarlo.
