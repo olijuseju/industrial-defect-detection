@@ -46,3 +46,24 @@ jobs:
         run: uv sync --locked --extra api
       - name: Run tests
         run: uv run pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # La caché de capas evita reinstalar torch en cada ejecución.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: defect-detection:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Los pesos entrenados no están en el repo. Para comprobar que la imagen arranca y
+      # responde bastan los pesos públicos de Ultralytics, que es el modelo de partida.
+      - name: Download public weights
+        run: curl -fsSL -o yolo11n.pt https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.pt
+      - name: Smoke test
+        run: scripts/docker_smoke_test.sh defect-detection:ci yolo11n.pt
