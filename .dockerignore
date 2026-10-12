@@ -1,0 +1,9 @@
+# Lista blanca: se ignora todo y se readmite solo lo que la imagen necesita. Así los
+# datos, los pesos, los runs o el entorno virtual no pueden colarse por descuido, y el
+# contexto que se envía a Docker pesa kilobytes en vez de gigabytes.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src
+**/__pycache__
